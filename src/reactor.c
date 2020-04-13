@@ -47,7 +47,7 @@ static unsigned int convert(unsigned int events){
 }
 
 static int set_non_blocking(int fd){
-	int flags = fcntl(fd, F_GETFL);
+	int flags = fcntl(fd, F_GETFL, 0);
 	if(flags == -1){
 		return -1;
 	}
@@ -56,12 +56,12 @@ static int set_non_blocking(int fd){
 }
 
 static int set_close_on_exec(int fd){
-	int flags = fcntl(fd, F_GETFL);
+	int flags = fcntl(fd, F_GETFL, 0);
 	if(flags == -1){
 		return -1;
 	}
 
-	return fcntl(fd, F_SETFL, flags | O_CLOEXEC);
+	return fcntl(fd, F_SETFL, flags | FD_CLOEXEC);
 }
 
 static void maybe_resize(apc_reactor *reactor, int len){
@@ -91,9 +91,9 @@ static int create_backend_fd(){
     int pollfd = -1;
 #if defined(__linux__) 
 	pollfd = epoll_create1(O_CLOEXEC);
-#elif defined(__OpenBSD__)
+#elif defined(__NetBSD__)
     pollfd = kqueue1(O_CLOEXEC);
-#elif defined(__NetBSD__) || defined(__FreeBSD__)
+#elif defined(__OpenBSD__) || defined(__FreeBSD__)
 	pollfd = kqueue();
 	int err = set_close_on_exec(pollfd);
 	if(err != 0){
