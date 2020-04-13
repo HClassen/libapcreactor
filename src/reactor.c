@@ -7,13 +7,12 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
-#include <stdio.h>
-#include <string.h>
 
 #if defined(__linux__)
     #include <sys/epoll.h>
     static int conversion[] = {EPOLLIN, EPOLLOUT};
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
+    #include <sys/types.h>
     #include <sys/event.h>
     static int conversion[] = {EVFILT_READ, EVFILT_WRITE};
 #endif
@@ -56,12 +55,12 @@ static int set_non_blocking(int fd){
 }
 
 static int set_close_on_exec(int fd){
-	int flags = fcntl(fd, F_GETFL, 0);
+	int flags = fcntl(fd, F_GETFD, 0);
 	if(flags == -1){
 		return -1;
 	}
 
-	return fcntl(fd, F_SETFL, flags | FD_CLOEXEC);
+	return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
 static void maybe_resize(apc_reactor *reactor, int len){
@@ -90,17 +89,31 @@ static void maybe_resize(apc_reactor *reactor, int len){
 static int create_backend_fd(){
     int pollfd = -1;
 #if defined(__linux__) 
-	pollfd = epoll_create1(O_CLOEXEC);
+	pollfd = epoll_create1(EPOLL_CLOEXEC);
+    if(pollfd > 0){
+        return pollfd;
+    }
+    if(pollfd == -1 && errno == ENOSYS){
+        pollfd = epoll_create(256);
+    }
 #elif defined(__NetBSD__)
     pollfd = kqueue1(O_CLOEXEC);
+    if(pollfd > 0){
+        return pollfd;
+    }
+    if(pollfd == -1 && errno == ENOSYS){
+        pollfd = kqueue();
+    }
 #elif defined(__OpenBSD__) || defined(__FreeBSD__)
 	pollfd = kqueue();
-	int err = set_close_on_exec(pollfd);
-	if(err != 0){
-        printf("errno: %d, %s\n", errno, strerror(errno));
-		pollfd = -1;
-	}
 #endif
+    if(pollfd != -1){
+        int err = set_close_on_exec(pollfd);
+        if(err != 0){
+            close(pollfd);
+            pollfd = -1;
+        }
+    }
 	return pollfd;
 }
 
@@ -379,20 +392,16 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 		
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
-        printf("before\n");
 		update_timeout_(&now, &base, timeout);
-        printf("after\n");
 		struct timespec *timer = NULL;
 		struct timespec maybe_timer = {0, 0};
 		if(timeout > -1){
 			maybe_timer.tv_sec = timeout / 1000;
 			maybe_timer.tv_nsec = (timeout % 1000) * 1e+6;
-            printf("maybe_timer: %lds - %ldns\n", maybe_timer.tv_sec, maybe_timer.tv_nsec);
 			timer = &maybe_timer;
 		}
-        printf("watch_events: %d\n", watch_events);
+
 		int nfds = kevent(reactor->backend_fd, watch, watch_events, events, NR_EVENTS, timer);
-        printf("nfds: %d\n", nfds);
 		if (nfds == 0) {
             assert(timeout != -1);
             if (timeout == 0){
@@ -441,7 +450,6 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             nevents += 1;
 		}
         
-        printf("nevents: %d\n", nevents);
 		if(nevents != 0){
             if(nfds == NR_EVENTS && !QUEUE_EMPTY(&reactor->watcher_queue)){
                 timeout = 0;
