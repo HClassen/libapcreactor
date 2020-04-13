@@ -227,6 +227,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 	assert(reactor != NULL);
 	assert(timeout >= -1);
 	assert(reactor->event_watchers != NULL);
+    assert(reactor->backend_fd > -1);
 
     if(reactor->nfds == 0){
         assert(QUEUE_EMPTY(&reactor->watcher_queue));
