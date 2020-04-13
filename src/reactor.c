@@ -202,7 +202,7 @@ static void invalidate_fd(apc_reactor *reactor, int fd){
         struct epoll_event dummy = {0};
         epoll_ctl(reactor->backend_fd, EPOLL_CTL_DEL, fd, &dummy);
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
-		kevent dummy = {0};
+		struct kevent dummy = {0};
 		struct timespec dummy_timer = {0, 0};
 		EV_SET(&dummy, fd, 0, EV_DELETE, 0, 0, 0);
 		kevent(reactor->backend_fd, &dummy, 1, NULL, 0, &dummy_timer);
@@ -349,8 +349,8 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
 	int count = 32;
-	kevent watch[NR_EVENTS];
-	kevent events[NR_EVENTS];
+	struct kevent watch[NR_EVENTS];
+	struct kevent events[NR_EVENTS];
 	queue *q = NULL;
 	apc_event_watcher *w = NULL;
 	struct timespec base;
@@ -409,7 +409,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
 		int nevents = 0;
 		for(int i = 0; i<nfds; i++){
-			kevent *pe = events + i; 
+			struct kevent *pe = events + i; 
 			int fd = pe->ident;
 
             if(fd == -1 || pe->flags & EV_ERROR){
@@ -421,10 +421,10 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
             w = reactor->event_watchers[fd];
             if(w == NULL){
-				kevent dummy;
+				struct kevent dummy;
 				struct timespec dummy_timer = {0, 0};
 				EV_SET(&dummy, fd, 0, EV_DELETE, 0, 0, 0);
-				kevent(reactor->backend_fd, 1, &dummy, NULL, 0, &dummy_timer);
+				kevent(reactor->backend_fd, &dummy, 1, NULL, 0, &dummy_timer);
                 continue;
             }
 
