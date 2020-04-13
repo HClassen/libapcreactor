@@ -390,9 +390,8 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
     }
 
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
-	
 	struct kevent watch[MAX_EVENTS];
-    struct kevent e = {0}
+    struct kevent e = {0};
     while(!QUEUE_EMPTY(&reactor->watcher_queue)){
         q = QUEUE_NEXT(&reactor->watcher_queue);
         QUEUE_REMOVE(q);
