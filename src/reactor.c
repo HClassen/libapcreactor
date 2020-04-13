@@ -36,13 +36,24 @@
 
 static unsigned int convert(unsigned int events){
     unsigned int converted = 0;
-    if(events & APC_REACTOR_POLLIN){
+    if(events & APC_POLLIN){
         converted |= conversion[0];
     }
-    if(events & APC_REACTOR_POLLOUT){
+    if(events & APC_POLLOUT){
         converted |= conversion[1];
     }
     return converted;
+}
+
+static unsigned int restore(unsigned int events){
+    unsigned int restored = 0;
+    if(events & conversion[0]){
+        restored |= APC_POLLIN;
+    }
+    if(events & conversion[1]){
+        restored |= APC_POLLOUT;
+    }
+    return restored;
 }
 
 static int set_non_blocking(int fd){
@@ -157,7 +168,7 @@ int apc_event_watcher_init(apc_event_watcher *w, event_watcher_cb cb, int fd){
 }
 
 void apc_event_watcher_register(apc_reactor *reactor, apc_event_watcher *w, unsigned int events){
-	assert(0 == (events & ~(APC_REACTOR_POLLIN | APC_REACTOR_POLLOUT)));
+	assert(0 == (events & ~(APC_POLLIN | APC_POLLOUT)));
 	assert(0 != events);
 	assert(w->fd >= 0);
 	assert(w->fd < INT_MAX);
@@ -176,7 +187,7 @@ void apc_event_watcher_register(apc_reactor *reactor, apc_event_watcher *w, unsi
 }
 
 void apc_event_watcher_deregister(apc_reactor *reactor, apc_event_watcher *w, unsigned int events){
-	assert(0 == (events & ~(APC_REACTOR_POLLIN | APC_REACTOR_POLLOUT)));
+	assert(0 == (events & ~(APC_POLLIN | APC_POLLOUT)));
   	assert(0 != events);
 
 	if(w->fd == -1){
@@ -225,7 +236,7 @@ static void invalidate_fd(apc_reactor *reactor, int fd){
 }
 
 void apc_event_watcher_close(apc_reactor *reactor, apc_event_watcher *w){
-	apc_event_watcher_deregister(reactor, w, APC_REACTOR_POLLIN | APC_REACTOR_POLLOUT);
+	apc_event_watcher_deregister(reactor, w, APC_POLLIN | APC_POLLOUT);
 
 	if(w->fd >= 0){
 		invalidate_fd(reactor, w->fd);
@@ -233,7 +244,7 @@ void apc_event_watcher_close(apc_reactor *reactor, apc_event_watcher *w){
 }
 
 int apc_event_watcher_active(const apc_event_watcher *w, unsigned int events){
-  assert(0 == (events & ~(APC_REACTOR_POLLIN | APC_REACTOR_POLLOUT)));
+  assert(0 == (events & ~(APC_POLLIN | APC_POLLOUT)));
   assert(0 != events);
   return 0 != (w->events & convert(events));
 }
@@ -344,7 +355,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
             pe->events &= w->events | EPOLLIN | EPOLLOUT;
             if(pe->events != 0){
-                w->cb(reactor, w, pe->events);
+                w->cb(reactor, w, restore(pe->events));
             }
             nevents += 1;
         }
@@ -445,7 +456,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
             pe->filter &= w->events | EVFILT_READ | EVFILT_WRITE;
             if(pe->filter != 0){
-                w->cb(reactor, w, pe->filter);
+                w->cb(reactor, w, restore(pe->filter));
             }
             nevents += 1;
 		}

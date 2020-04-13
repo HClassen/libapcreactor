@@ -1,8 +1,8 @@
 #ifndef APC_REACTOR_HEADER
 #define APC_REACTOR_HEADER
 
-#define APC_REACTOR_POLLIN  1
-#define APC_REACTOR_POLLOUT 2
+#define APC_POLLIN  1
+#define APC_POLLOUT 2
 
 typedef struct apc_reactor_ apc_reactor;
 typedef struct apc_event_watcher_ apc_event_watcher;
