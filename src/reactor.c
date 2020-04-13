@@ -22,7 +22,7 @@
 #include "queue.h"
 
 #define container_of(ptr, type, member) ((type *)  ((char *) ptr - offsetof(type, member)))
-#define NR_EVENTS 1024
+#define MAX_EVENTS 1024
 
 #define update_timeout_(now, base, timeout)     \
 	assert((timeout) > 0);                      \
@@ -293,12 +293,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
         e.events = w->events;
         e.data.fd = w->fd;
-        if(w->events & EPOLLIN){
-            printf("epollin\n");
-        }
-        if(w->events & EPOLLOUT){
-            printf("epollout\n");
-        }
+ 
         if(w->registered == 0){
             op = EPOLL_CTL_ADD;
         }else{
@@ -322,11 +317,10 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
     
 	struct timespec base;
 	clock_gettime(CLOCK_REALTIME, &base);
-    struct epoll_event events[NR_EVENTS];
+    struct epoll_event events[MAX_EVENTS];
 	int count = 32;
     while(count-- > 0){
-        int nfds = epoll_wait(reactor->backend_fd, events, NR_EVENTS, timeout);
-        printf("nfds: %d\n", nfds);
+        int nfds = epoll_wait(reactor->backend_fd, events, MAX_EVENTS, timeout);
         struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
         if (nfds == 0) {
@@ -381,7 +375,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
         }
 
         if(nevents != 0){
-            if(nfds == NR_EVENTS){
+            if(nfds == MAX_EVENTS){
                 timeout = 0;
                 continue;
             }
@@ -396,46 +390,39 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
     }
 
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
-	int count = 32;
-	struct kevent watch[NR_EVENTS];
-	struct kevent events[NR_EVENTS];
-	struct timespec base;
-	clock_gettime(CLOCK_REALTIME, &base);
-	while(count-- > 0){
-		int watch_events = 0;
-		for(int i = 0; i<NR_EVENTS; i++){
-			if(QUEUE_EMPTY(&reactor->watcher_queue)){
-				break;
-			}
+	
+	struct kevent watch[MAX_EVENTS];
+    struct kevent e = {0}
+    while(!QUEUE_EMPTY(&reactor->watcher_queue)){
+        q = QUEUE_NEXT(&reactor->watcher_queue);
+        QUEUE_REMOVE(q);
+        QUEUE_INIT(q);
+        w = container_of(q, apc_event_watcher, watcher_queue);
+        assert(w->fd >= 0);
+        assert(w->events != 0);
+        assert(w->fd < reactor->nwatchers);
 
-			q = QUEUE_NEXT(&reactor->watcher_queue);
-			QUEUE_REMOVE(q);
-			QUEUE_INIT(q);
-			w = container_of(q, apc_event_watcher, watcher_queue);
-			assert(w->fd >= 0);
-        	assert(w->events != 0);
-        	assert(w->fd < reactor->nwatchers);
-
-			EV_SET(&watch[i], w->fd, w->events, EV_ADD, 0, 0, 0);
-			w->registered = 1;
-			watch_events += 1;
-		}
-		
-		struct timespec now;
-		clock_gettime(CLOCK_REALTIME, &now);
-        if(timeout != -1){
-            update_timeout_(&now, &base, timeout);
+        EV_SET(&e, w->fd, w->events, EV_ADD, 0, 0, 0);
+        if(kevent(reactor->backend_fd, &e, 1, NULL, 0, NULL) == -1){
+            if(errno != EEXIST){
+                abort();
+            }
         }
-		struct timespec *timer = NULL;
-		struct timespec maybe_timer = {0, 0};
-		if(timeout > -1){
+        w->registered = 1;
+    }
+
+	struct timespec base, maybe_timer = {0, 0}, *timer = NULL;
+	clock_gettime(CLOCK_REALTIME, &base);
+    struct kevent events[MAX_EVENTS];
+    int count = 32;
+    while(count-- > 0){
+        if(timeout > -1){
 			maybe_timer.tv_sec = timeout / 1000;
 			maybe_timer.tv_nsec = (timeout % 1000) * 1e+6;
 			timer = &maybe_timer;
 		}
-
-		int nfds = kevent(reactor->backend_fd, watch, watch_events, events, NR_EVENTS, timer);
-		if (nfds == 0) {
+		int nfds = kevent(reactor->backend_fd, watch, watch_events, events, MAX_EVENTS, timer);
+        if (nfds == 0) {
             assert(timeout != -1);
             if (timeout == 0){
                 return;
@@ -460,7 +447,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 			struct kevent *pe = events + i; 
 			int fd = pe->ident;
 
-            if(fd == -1 || pe->flags & EV_ERROR){
+            if(fd == -1){
                 continue;
             }
 
@@ -470,9 +457,8 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             w = reactor->event_watchers[fd];
             if(w == NULL){
 				struct kevent dummy;
-				struct timespec dummy_timer = {0, 0};
 				EV_SET(&dummy, fd, 0, EV_DELETE, 0, 0, 0);
-				kevent(reactor->backend_fd, &dummy, 1, NULL, 0, &dummy_timer);
+				kevent(reactor->backend_fd, &dummy, 1, NULL, 0, NULL);
                 continue;
             }
 
@@ -484,7 +470,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 		}
         
 		if(nevents != 0){
-            if(nfds == NR_EVENTS && !QUEUE_EMPTY(&reactor->watcher_queue)){
+            if(nfds == MAX_EVENTS){
                 timeout = 0;
                 continue;
             }
@@ -496,6 +482,6 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
         if(timeout == -1){
             continue;
         }
-	}
+    }
 #endif
 }
