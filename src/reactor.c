@@ -428,9 +428,9 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
                 continue;
             }
 
-            pe->events &= w->events | EVFILT_READ | EVFILT_WRITE;
-            if(pe->events != 0){
-                w->cb(reactor, w, pe->events);
+            pe->filters &= w->events | EVFILT_READ | EVFILT_WRITE;
+            if(pe->filters != 0){
+                w->cb(reactor, w, pe->filters);
             }
             nevents += 1;
 		}
