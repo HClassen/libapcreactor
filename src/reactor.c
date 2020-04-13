@@ -30,9 +30,10 @@
 		((base)->tv_sec * 1000 + 				\
 		(base)->tv_nsec / 1e+6);				\
     printf("timeout: %d, diff: %ld\n", (timeout), diff);\
-    printf("now: %lds-%ldns, base: %lds-%ldns", (now)->tv_sec, (now)->tv_nsec, (base)->tv_sec, (base)->tv_nsec);\
+    printf("now: %lds-%ldns, base: %lds-%ldns\n", (now)->tv_sec, (now)->tv_nsec, (base)->tv_sec, (base)->tv_nsec);\
 	(timeout) -= (int) diff;          			\
 	if((timeout) <= 0){                         \
+        printf("return\n");\
 		return;                                 \
 	}                                           \
 	continue;                                   \
@@ -235,11 +236,11 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
         assert(QUEUE_EMPTY(&reactor->watcher_queue));
         return;
     }
-
+    
+    queue *q = NULL;
+    apc_event_watcher* w = NULL;
 #if defined(__linux__)   
     /* register all watchers */
-    queue *q;
-    apc_event_watcher* w;
     struct epoll_event e = (struct epoll_event) {0};
     int op;
     while(!QUEUE_EMPTY(&reactor->watcher_queue)){
@@ -353,8 +354,6 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 	int count = 32;
 	struct kevent watch[NR_EVENTS];
 	struct kevent events[NR_EVENTS];
-	queue *q = NULL;
-	apc_event_watcher *w = NULL;
 	struct timespec base;
 	clock_gettime(CLOCK_REALTIME, &base);
 	while(count-- > 0){
