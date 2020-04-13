@@ -29,6 +29,8 @@
 		(now)->tv_nsec / 1e+6) - 				\
 		((base)->tv_sec * 1000 + 				\
 		(base)->tv_nsec / 1e+6);				\
+    printf("timeout: %d, diff: %ld\n", (timeout), diff);\
+    printf("now: %lds-%ldns, base: %lds-%ldns", (now)->tv_sec, (now)->tv_nsec, (base)->tv_sec, (base)->tv_nsec);\
 	(timeout) -= (int) diff;          			\
 	if((timeout) <= 0){                         \
 		return;                                 \
