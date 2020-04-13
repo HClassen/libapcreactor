@@ -8,6 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
 
 #if defined(__linux__)
     #include <sys/epoll.h>
@@ -96,6 +97,7 @@ static int create_backend_fd(){
 	pollfd = kqueue();
 	int err = set_close_on_exec(pollfd);
 	if(err != 0){
+        printf("errno: %d, %s\n", errno, strerror(errno));
 		pollfd = -1;
 	}
 #endif
