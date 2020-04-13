@@ -403,7 +403,9 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 		
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
-		update_timeout_(&now, &base, timeout);
+        if(timeout != -1){
+            update_timeout_(&now, &base, timeout);
+        }
 		struct timespec *timer = NULL;
 		struct timespec maybe_timer = {0, 0};
 		if(timeout > -1){
