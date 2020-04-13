@@ -31,10 +31,8 @@
 		(base)->tv_nsec / 1e+6);				\
 	(timeout) -= (int) diff;          			\
 	if((timeout) <= 0){                         \
-        printf("return\n");\
 		return;                                 \
 	}                                           \
-	continue;                                   \
 
 static unsigned int convert(unsigned int events){
     unsigned int converted = 0;
@@ -291,6 +289,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             }
             
             update_timeout_(&now, &base, timeout)
+            continue;
         }
         if(nfds == -1){
             if(errno != EINTR){
@@ -306,6 +305,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             }
 
             update_timeout_(&now, &base, timeout)
+            continue;
         }
 
         int nevents = 0;
