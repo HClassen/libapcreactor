@@ -29,8 +29,6 @@
 		(now)->tv_nsec / 1e+6) - 				\
 		((base)->tv_sec * 1000 + 				\
 		(base)->tv_nsec / 1e+6);				\
-    printf("timeout: %d, diff: %ld\n", (timeout), diff);\
-    printf("now: %lds-%ldns, base: %lds-%ldns\n", (now)->tv_sec, (now)->tv_nsec, (base)->tv_sec, (base)->tv_nsec);\
 	(timeout) -= (int) diff;          			\
 	if((timeout) <= 0){                         \
         printf("return\n");\
@@ -378,12 +376,15 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 		
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
+        printf("before\n");
 		update_timeout_(&now, &base, timeout);
+        printf("after\n");
 		struct timespec *timer = NULL;
 		struct timespec maybe_timer = {0, 0};
 		if(timeout > -1){
 			maybe_timer.tv_sec = timeout / 1000;
 			maybe_timer.tv_nsec = (timeout % 1000) * 1e+6;
+            printf("maybe_timer: %lds - %ldns\n", maybe_timer.tv_sec, maybe_timer.tv_nsec);
 			timer = &maybe_timer;
 		}
         printf("watch_events: %d\n", watch_events);
