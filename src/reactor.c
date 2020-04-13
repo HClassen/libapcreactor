@@ -374,8 +374,6 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 			w->registered = 1;
 			watch_events += 1;
 		}
-
-        printf("watcH_events: %d\n", watch_events);
 		
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
@@ -387,6 +385,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 			maybe_timer.tv_nsec = (timeout % 1000) * 1e+6;
 			timer = &maybe_timer;
 		}
+        printf("watch_events: %d\n", watch_events);
 		int nfds = kevent(reactor->backend_fd, watch, watch_events, events, NR_EVENTS, timer);
         printf("nfds: %d\n", nfds);
 		if (nfds == 0) {
