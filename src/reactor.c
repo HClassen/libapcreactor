@@ -12,7 +12,7 @@
 #if defined(__linux__)
     #include <sys/epoll.h>
     static int conversion[] = {EPOLLIN, EPOLLOUT};
-#elif defined(__openBSD__) || defined(__netBSD__) || defined(__freeBSD__)
+#elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
     #include <sys/event.h>
     static int conversion[] = {EVFILT_READ, EVFILT_WRITE};
 #endif
@@ -91,13 +91,13 @@ static int create_backend_fd(){
     int pollfd = -1;
 #if defined(__linux__) 
 	pollfd = epoll_create1(O_CLOEXEC);
-#elif defined(__openBSD__)
+#elif defined(__OpenBSD__)
     pollfd = kqueue1(O_CLOEXEC);
-#elif defined(__netBSD__) || defined(__freeBSD__)
+#elif defined(__NetBSD__) || defined(__FreeBSD__)
 	pollfd = kqueue();
 	int err = set_close_on_exec(pollfd);
 	if(err != 0){
-		return -1;
+		pollfd = -1;
 	}
 #endif
 	return pollfd;
@@ -201,11 +201,11 @@ static void invalidate_fd(apc_reactor *reactor, int fd){
 #if defined(__linux__)
         struct epoll_event dummy = {0};
         epoll_ctl(reactor->backend_fd, EPOLL_CTL_DEL, fd, &dummy);
-#elif defined(__openBSD__) || defined(__netBSD__) || defined(__freeBSD__)
+#elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
 		kevent dummy = {0};
 		struct timespec dummy_timer = {0, 0};
 		EV_SET(&dummy, fd, 0, EV_DELETE, 0, 0, 0);
-		kevent(reactor->backend_fd, 1, &dummy, NULL, 0, &dummy_timer);
+		kevent(reactor->backend_fd, &dummy, 1, NULL, 0, &dummy_timer);
 #endif
     }
 }
@@ -224,7 +224,6 @@ int apc_event_watcher_active(const apc_event_watcher *w, unsigned int events){
   return 0 != (w->events & convert(events));
 }
 
-#if defined(__linux__)
 void apc_reactor_poll(apc_reactor *reactor, int timeout){
 	assert(reactor != NULL);
 	assert(timeout >= -1);
@@ -234,7 +233,8 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
         assert(QUEUE_EMPTY(&reactor->watcher_queue));
         return;
     }
-    
+
+#if defined(__linux__)   
     /* register all watchers */
     queue *q;
     apc_event_watcher* w;
@@ -346,18 +346,8 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             continue;
         }
     }
-}
-#elif defined(__openBSD__) || defined(__netBSD__) || defined(__freeBSD__)
-void apc_reactor_poll(apc_reactor *reactor, int timeout){
-	assert(reactor != NULL);
-	assert(timeout >= -1);
-	assert(reactor->event_watchers != NULL);
 
-    if(reactor->nfds == 0){
-        assert(QUEUE_EMPTY(&reactor->watcher_queue));
-        return;
-    }
-
+#elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
 	int count = 32;
 	kevent watch[NR_EVENTS];
 	kevent events[NR_EVENTS];
@@ -459,5 +449,5 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
             continue;
         }
 	}
-}
 #endif
+}
