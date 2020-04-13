@@ -420,7 +420,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 			maybe_timer.tv_nsec = (timeout % 1000) * 1e+6;
 			timer = &maybe_timer;
 		}
-		int nfds = kevent(reactor->backend_fd, watch, watch_events, events, MAX_EVENTS, timer);
+		int nfds = kevent(reactor->backend_fd, NULL, 0, events, MAX_EVENTS, timer);
         if (nfds == 0) {
             assert(timeout != -1);
             if (timeout == 0){
