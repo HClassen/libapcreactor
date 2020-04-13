@@ -7,14 +7,15 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #if defined(__linux__)
     #include <sys/epoll.h>
-    static int conversion[] = {EPOLLIN, EPOLLOUT};
+    static int conversion[] = {EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLHUP};
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
     #include <sys/types.h>
     #include <sys/event.h>
-    static int conversion[] = {EVFILT_READ, EVFILT_WRITE};
+    static int conversion[] = {EVFILT_READ, EVFILT_WRITE, EV_ERROR, EV_EOF};
 #endif
 
 #include "reactor.h"
@@ -53,6 +54,12 @@ static unsigned int restore(unsigned int events){
     if(events & conversion[1]){
         restored |= APC_POLLOUT;
     }
+    if(events & conversion[2]){
+        restored |= APC_POLLERR;
+    }
+    if(events & conversion[3]){
+        restored |= APC_POLLHUP;
+    }
     return restored;
 }
 
@@ -61,6 +68,9 @@ static int set_non_blocking(int fd){
 	if(flags == -1){
 		return -1;
 	}
+    if(flags & O_NONBLOCK){
+        return 0;
+    }
 
 	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
@@ -161,10 +171,15 @@ int apc_event_watcher_init(apc_event_watcher *w, event_watcher_cb cb, int fd){
 	QUEUE_INIT(&w->watcher_queue);
 
 	w->cb = cb;
-	w->fd = set_non_blocking(fd);
+	w->fd = fd;
 	w->events = 0;
 	w->registered = 0;
-	return -(w->fd < 0);
+    int err = set_non_blocking(fd);
+    if(err != 0){
+        w->fd = -1;
+        return -1;
+    }
+	return 0;
 }
 
 void apc_event_watcher_register(apc_reactor *reactor, apc_event_watcher *w, unsigned int events){
@@ -278,7 +293,12 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 
         e.events = w->events;
         e.data.fd = w->fd;
-
+        if(w->events & EPOLLIN){
+            printf("epollin\n");
+        }
+        if(w->events & EPOLLOUT){
+            printf("epollout\n");
+        }
         if(w->registered == 0){
             op = EPOLL_CTL_ADD;
         }else{
@@ -306,12 +326,12 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 	int count = 32;
     while(count-- > 0){
         int nfds = epoll_wait(reactor->backend_fd, events, NR_EVENTS, timeout);
-
+        printf("nfds: %d\n", nfds);
         struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
         if (nfds == 0) {
             assert(timeout != -1);
-            if (timeout == 0){
+            if(timeout == 0){
                 return;
             }
             
@@ -353,7 +373,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
                 continue;
             }
 
-            pe->events &= w->events | EPOLLIN | EPOLLOUT;
+            pe->events &= w->events | EPOLLERR | EPOLLHUP;
             if(pe->events != 0){
                 w->cb(reactor, w, restore(pe->events));
             }
@@ -456,9 +476,9 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
                 continue;
             }
 
-            pe->filter &= w->events | EVFILT_READ | EVFILT_WRITE;
-            if(pe->filter != 0){
-                w->cb(reactor, w, restore(pe->filter));
+            int filter = (pe->filter & w->events) | (pe->flags & (EV_ERROR | EV_EOF));
+            if(filter != 0){
+                w->cb(reactor, w, restore(filter));
             }
             nevents += 1;
 		}

@@ -3,6 +3,8 @@
 
 #define APC_POLLIN  1
 #define APC_POLLOUT 2
+#define APC_POLLERR 4
+#define APC_POLLHUP 8
 
 typedef struct apc_reactor_ apc_reactor;
 typedef struct apc_event_watcher_ apc_event_watcher;
@@ -17,11 +19,11 @@ struct apc_reactor_{
 
 typedef void (*event_watcher_cb)(apc_reactor *reactor, apc_event_watcher *w, unsigned int events);
 struct apc_event_watcher_{
-    void *watcher_queue[2];
     int fd;
     unsigned int events;
     unsigned int registered;
     event_watcher_cb cb;
+    void *watcher_queue[2];
 };
 
 int apc_reactor_init(apc_reactor *reactor);

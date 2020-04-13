@@ -9,6 +9,9 @@ main: $(FILES)
 debug: $(FILES)
 	$(CC) $(CFLAGS) -o reactor main.c $(FILES) $(DEBUG)
 
+client: client.c
+	$(CC) $(CFLAGS) -o client client.c
+
 lib: libprep libcomb libclean
 
 libprep: $(FILES)
