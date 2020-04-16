@@ -35,8 +35,9 @@ and
 
 The `apc_reactor` is the core element, where `apc_event_watcher`s get registrated for specific events and their callbacks get called. `apc_event_watcher`s are associated with a file descriptor an have their callback called when the specified event(s) occur.
 An `event_watcher_cb` is a function with the signiture
-
-```C void cb(apc_reactor *reactor, apc_event_watcher *w, unsigned int events)```
+```C 
+    void cb(apc_reactor *reactor, apc_event_watcher *w, unsigned int events)
+```
 .
 
 The following four event types are provided an can be combined with an or:
