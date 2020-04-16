@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #if defined(__linux__)
     #include <sys/epoll.h>
@@ -16,6 +15,13 @@
     #include <sys/types.h>
     #include <sys/event.h>
     static int conversion[] = {EVFILT_READ, EVFILT_WRITE, EV_ERROR, EV_EOF};
+#elif defined(sun) || defined(__sun)
+    #if defined(__SVR4) || defined(__svr4__)
+    #define solaris
+    #include <sys/devpoll.h>
+    #include <sys/ioctl.h>
+    static int conversion[] = {POLLIN, POLLOUT, POLLERR, POLLHUP};
+    #endif
 #endif
 
 #include "reactor.h"
@@ -42,6 +48,12 @@ static unsigned int convert(unsigned int events){
     }
     if(events & APC_POLLOUT){
         converted |= conversion[1];
+    }
+    if(events & APC_POLLERR){
+        converted |= conversion[2];
+    }
+    if(events & APC_POLLHUP){
+        converted |= conversion[3];
     }
     return converted;
 }
@@ -127,8 +139,10 @@ static int create_backend_fd(){
     }
 #elif defined(__OpenBSD__) || defined(__FreeBSD__)
 	pollfd = kqueue();
+#elif defined(solaris)
+    pollfd = open("/dev/poll", O_RDWR);
 #endif
-    if(pollfd != -1){
+    if(pollfd > -1){
         int err = set_close_on_exec(pollfd);
         if(err != 0){
             close(pollfd);
@@ -243,9 +257,11 @@ static void invalidate_fd(apc_reactor *reactor, int fd){
         epoll_ctl(reactor->backend_fd, EPOLL_CTL_DEL, fd, &dummy);
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
 		struct kevent dummy = {0};
-		struct timespec dummy_timer = {0, 0};
 		EV_SET(&dummy, fd, 0, EV_DELETE, 0, 0, 0);
-		kevent(reactor->backend_fd, &dummy, 1, NULL, 0, &dummy_timer);
+		kevent(reactor->backend_fd, &dummy, 1, NULL, 0, NULL);
+#elif defined(solaris)
+        struct pollfd dummy = {fd, POLLREMOVE, 0};
+        write(reactor->backend_fd, &dummy, sizeof(struct pollfd));
 #endif
     }
 }
@@ -277,8 +293,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
     
     queue *q = NULL;
     apc_event_watcher* w = NULL;
-#if defined(__linux__)   
-    /* register all watchers */
+#if defined(__linux__)
     struct epoll_event e = (struct epoll_event) {0};
     int op;
     while(!QUEUE_EMPTY(&reactor->watcher_queue)){
@@ -323,7 +338,7 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
         int nfds = epoll_wait(reactor->backend_fd, events, MAX_EVENTS, timeout);
         struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
-        if (nfds == 0) {
+        if(nfds == 0) {
             assert(timeout != -1);
             if(timeout == 0){
                 return;
@@ -468,6 +483,112 @@ void apc_reactor_poll(apc_reactor *reactor, int timeout){
 		}
         
 		if(nevents != 0){
+            if(nfds == MAX_EVENTS){
+                timeout = 0;
+                continue;
+            }
+            return;
+        }
+        if(timeout == 0){
+            return;
+        }
+        if(timeout == -1){
+            continue;
+        }
+    }
+#elif defined(solaris)
+    struct pollfd e = (struct pollfd) {0};
+    int op;
+    while(!QUEUE_EMPTY(&reactor->watcher_queue)){
+        q = QUEUE_NEXT(&reactor->watcher_queue);
+        QUEUE_REMOVE(q);
+        QUEUE_INIT(q);
+
+        w = container_of(q, apc_event_watcher, watcher_queue);
+        assert(w->fd >= 0);
+        assert(w->events != 0);
+        assert(w->fd < reactor->nwatchers);
+        
+        e.fd = w->fd;
+        e.events = w->events;
+        e.revents = 0;
+ 
+        if(w->registered == 0){
+            op = EPOLL_CTL_ADD;
+        }else{
+            op = EPOLL_CTL_MOD;
+        }
+
+        if(write(reactor->backend_fd, &e, sizeof(struct pollfd)) != sizeof(struct pollfd)){
+            abort();
+        }
+
+        w->registered = 1;
+    }
+    
+    struct timespec base;
+	clock_gettime(CLOCK_REALTIME, &base);
+    struct pollfd events[MAX_EVENTS];
+    struct dvpoll dvpoll;
+	int count = 32;
+    while(count-- > 0){
+        dvpoll = {events, MAX_EVENTS, timeout};
+        int nfds = ioctl(reactor->backend_fd, DP_POLL, &dvpoll);
+        struct timespec now;
+		clock_gettime(CLOCK_REALTIME, &now);
+        if(nfds == 0) {
+            assert(timeout != -1);
+            if(timeout == 0){
+                return;
+            }
+            
+            update_timeout_(&now, &base, timeout)
+            continue;
+        }
+        if(nfds == -1){
+            if(errno != EINTR){
+                abort();
+            }
+
+            if(timeout == -1){
+                continue;
+            }
+
+            if(timeout == 0){
+                return;
+            }
+
+            update_timeout_(&now, &base, timeout)
+            continue;
+        }
+
+        int nevents = 0;
+        for(int i = 0; i < nfds; i++){
+            struct pollfd *pe = events + i;
+            int fd = pe->data.fd;
+
+            if(fd == -1){
+                continue;
+            }
+
+            assert(fd >= 0);
+            assert(fd < reactor->nwatchers);
+
+            w = reactor->event_watchers[fd];
+            if(w == NULL){
+                struct pollfd dummy = {fd, POLLREMOVE, 0};
+                write(reactor->backend_fd, &dummy, sizeof(struct pollfd))
+                continue;
+            }
+
+            pe->revents &= w->events | POLLERR | POLLHUP;
+            if(pe->events != 0){
+                w->cb(reactor, w, restore(pe->events));
+            }
+            nevents += 1;
+        }
+
+        if(nevents != 0){
             if(nfds == MAX_EVENTS){
                 timeout = 0;
                 continue;

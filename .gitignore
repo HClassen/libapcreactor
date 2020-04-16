@@ -1,3 +1,8 @@
 main.c
 reactor
 script
+.vscode
+libapcreactor.a
+client
+server
+monitor_stdin
